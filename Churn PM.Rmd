@@ -1,0 +1,46 @@
+---
+title: "Churn PM"
+author: "Saurabh"
+date: "13/02/2017"
+output: html_document
+---
+
+```{r path}
+getwd()
+```
+```{r library}
+library(readr)
+library(dplyr)
+library(caret)
+```
+```{r data}
+Churn <- read_csv("~/Desktop/Analytics/RP2_Datasets/Churn PM/Churn.csv")
+Churn$Churn <- as.factor(Churn$Churn)
+Churn$`Int'l Plan` <- as.factor(Churn$`Int'l Plan`)
+Churn$`VMail Plan` <- as.factor(Churn$`VMail Plan`)
+Churn$Phone <- as.factor(Churn$Phone)
+str(Churn)
+train <- sample_frac(Churn,0.7)
+train$`Area Code` <- as.factor(train$`Area Code`)
+summary(train)
+train_rows <- as.numeric(rownames(train))
+test <- Churn[-train_rows,]
+test$`Area Code` <- as.factor(test$`Area Code`)
+summary(test)
+train$Phone <- NULL
+test$Phone <- NULL
+```
+```{r uni}
+table(train$Churn)
+
+```
+```{r multi}
+
+```
+```{r model}
+set.seed(12)
+rfmodel<-train(Churn~., data=train, method="rf", trainControl = c(method = "adaptive_cv", number = 10, repeats = 5, classProbs = TRUE, summaryFunction = twoClassSummary, adaptive = list(min = 10, alpha = 0.05, method = "gls", complete = TRUE)), metric="Kappa")
+confusionMatrix(rfmodel)
+pred<-predict(rfmodel, newdata=test)
+confusionMatrix(pred, test$Churn)
+```

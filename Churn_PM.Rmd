@@ -1,0 +1,161 @@
+---
+title: "Churn PM"
+author: "Saurabh"
+date: "13/02/2017"
+output: html_document
+---
+
+###Set Path 
+```{r path, message=FALSE, warning=FALSE, cache=TRUE}
+setwd("/Users/nsaurabh777/Desktop/Analytics/RP2_Datasets/Churn PM")
+getwd()
+```
+
+###Read Libraries
+```{r library, cache=TRUE}
+library(readr)
+library(dplyr)
+library(caret)
+library(graphics)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(e1071)
+library(randomForest)
+library(lmtest)
+library(gmodels)
+```
+
+###Data Splitting
+```{r data, message=FALSE, warning=FALSE,cache=TRUE}
+Churn <- read_csv("~/Desktop/Analytics/RP2_Datasets/Churn PM/Churn.csv")
+Churn$Churn <- as.factor(Churn$Churn)
+Churn$`Int'l Plan` <- as.factor(Churn$`Int'l Plan`)
+Churn$`VMail Plan` <- as.factor(Churn$`VMail Plan`)
+Churn$Phone <- as.factor(Churn$Phone)
+str(Churn)
+sum(is.na(Churn))
+train <- sample_frac(Churn,0.7)
+train$`Area Code` <- as.factor(train$`Area Code`)
+summary(train)
+train_rows <- as.numeric(rownames(train))
+test <- Churn[-train_rows,]
+test$`Area Code` <- as.factor(test$`Area Code`)
+summary(test)
+train_cat <- subset(train, select = c(`Account Length`, Churn, `Int'l Plan`, `VMail Plan`, State, `Area Code`))
+train_cont <- subset(train, select = -c(`Account Length`, Churn, `Int'l Plan`, `VMail Plan`, State, `Area Code`))
+train$Phone<-NULL
+test$Phone<-NULL
+```
+
+###Exploratory Analysis
+```{r analysis, cache=TRUE}
+summary(Churn$Churn)
+prop.table(summary(Churn$Churn))
+CrossTable(Churn$`Int'l Plan`, Churn$Churn)
+
+```
+
+####Classification Tree
+```{r class_tree, cache=TRUE}
+train_tree <- rpart(Churn~`CustServ Calls`+`Eve Calls`+`Intl Calls`+`Night Calls`+`Day Calls`, method = "class", data=Churn)
+plot(train_tree, uniform=TRUE,main="Classification Tree for Churn")
+text(train_tree, use.n=TRUE, all=TRUE, cex=.7)
+```
+
+
+```{r scree, cache=TRUE, include=FALSE}
+train_scree <- rpart(Churn~`CustServ Calls`+`Eve Charge`+`Intl Charge`+`Night Charge`+`Day Charge`, method = "class", data=Churn)
+plotcp(train_scree,lty=4,col="red")
+```
+
+####Independent vs Dependent Variable Plot
+```{r plots, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+plot(Churn~ `CustServ Calls`,data = Churn, type = "c")
+plot(Churn~ `Day Calls`,data = Churn, type = "c")
+plot(Churn~ `Eve Calls`,data = Churn, type = "c")
+plot(Churn~ `Night Calls`,data = Churn, type = "c")
+plot(Churn~ `Intl Calls`,data = Churn, type = "c")
+plot(Churn~ `Int'l Plan`,data = Churn, type = "c")
+qplot(`Day Calls`, `CustServ Calls`, data = Churn,colour=Churn)
+qplot(`Day Calls`,`Night Calls`, data = Churn,geom = c("point", "smooth"),color=Churn)
+dsc<- Churn[sample(nrow(Churn),100), ]
+qplot(`Day Calls`,`CustServ Calls`, data = dsc, geom = c("point","smooth"),color=Churn)
+qplot(`Day Calls`,`CustServ Calls`, data=Churn,facets=Churn~`Area Code`)
+qplot(`Area Code`,`Night Mins`, data=dsc)
+qplot(`Day Calls`,`Night Calls`, data = Churn, alpha=I(1/2))
+qplot(`Day Calls`, data = dsc,geom = "histogram",fill=Churn)
+qplot(`Night Calls`, data = dsc,geom = "histogram",fill=`Int'l Plan`)
+```
+
+###Modeling
+
+####Logistic Regression
+
+```{r logistic, cache=TRUE}
+logit <- train(Churn ~ `CustServ Calls` + `Day Charge` + `Night Calls`+ `Eve Calls` + `Day Calls` + `Night Mins` + `Intl Charge` + `Eve Mins`, data = train, method = "glm", family = "binomial")
+exp(coef(logit$finalModel))
+#Every unit increase in Intl Charge, there is a 40% chance of a customer churning.
+predlr <- predict(logit, newdata = test)
+confusionMatrix(predlr,test$Churn)
+head(predict(logit, newdata = test, type = "prob"))
+varImp(logit)
+```
+
+#####Logistic Regression Evaluation
+```{r logisticeval, cache=TRUE}
+logit1 <- glm(Churn ~ `CustServ Calls` + `Day Charge` + `Night Calls`+ `Eve Calls` + `Day Calls` + `Night Mins` + `Intl Charge` + `Eve Mins`, data = train, family = "binomial")
+summary(logit1)
+#Odds Ratio
+confint(logit1)
+confint.default(logit1)
+exp(logit1$coefficients)
+exp(confint(logit1))
+exp(coef(logit1))
+exp(cbind(OR = coef(logit1), confint(logit1))) 
+#Every unit change in international charge, there is 45% increase in Churn
+#Every unit change in Customer Service Calls, there is 55% increase in Churn
+logit2 <- glm(Churn ~ `Day Charge` + `CustServ Calls` + `Intl Charge`, data = train, family = "binomial")
+summary(logit2)
+#Odds Ratio
+confint(logit2)
+confint.default(logit2)
+exp(logit2$coefficients)
+exp(confint(logit2))
+exp(coef(logit2))
+exp(cbind(OR = coef(logit2), confint(logit2))) 
+#Every unit change in international charge, there is 41% increase in Churn
+#Every unit change in Customer Service Calls, there is 53% increase in Churn
+```
+
+#####Goodness of Fit
+```{r chi, cache=TRUE}
+anova(logit1, logit2, test = "Chisq")
+lrtest(logit1,logit2)
+##Note: logit1 is the full logistic regression model while logit2 is a logistic regression model after removing certain predictor variables. In this case, when we evaluate bot the models, the Null Hypothesis (H0) holds that the reduced model holds true. But in our case, the Pr(>Chi) < 0.05, therefore we reject the null hypothesis and go ahead with logit1, i.e. the full regression model without removing predictor variables.
+```
+
+####SVM 
+```{r svm, cache=TRUE}
+svmmodel <- svm(Churn ~. , data = train, gamma = 0.1, cost = 1)
+print(svmmodel)
+predsvm <- predict(svmmodel, newdata = test)
+confusionMatrix(predsvm, test$Churn)
+```
+
+####Random Forest
+```{r rf, cache=TRUE}
+set.seed(12)
+rfmodel<-train(Churn~., data=train, method="rf", trainControl = c(method = "adaptive_cv", number = 10, repeats = 5, classProbs = TRUE, summaryFunction = twoClassSummary, adaptive = list(min = 10, alpha = 0.05, method = "gls", complete = TRUE)), metric="Kappa")
+confusionMatrix(rfmodel)
+predrf<-predict(rfmodel, newdata=test)
+predrf1<-predict(rfmodel, newdata=test, type = "prob")
+head(predrf1)
+confusionMatrix(predrf, test$Churn)
+```
+
+###Performance Evaluation
+
+``` {r eval, cache= TRUE}
+#ROC Curve (working on it)
+```
